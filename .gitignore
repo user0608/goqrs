@@ -4,3 +4,6 @@
 *.exe
 certificates/*
 resource/*
+*.sh
+*.cmd
+build
