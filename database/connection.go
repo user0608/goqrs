@@ -68,6 +68,9 @@ func GormMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 		return next(c)
 	}
 }
+func Context(ctx context.Context) context.Context {
+	return context.WithValue(ctx, dbKey, conn)
+}
 func WithConnection(ctx context.Context) context.Context {
 	return context.WithValue(ctx, dbKey, conn.WithContext(ctx))
 }

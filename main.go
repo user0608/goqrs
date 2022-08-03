@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"goqrs/database"
 	"goqrs/envs"
 	"goqrs/handlers"
@@ -10,8 +11,11 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
+	"github.com/ksaucedo002/kcheck"
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
 func init() {
@@ -20,6 +24,12 @@ func init() {
 		log.Println("Eror loading .env file:", err)
 		os.Exit(0)
 	}
+	kcheck.AddFunc("uuid", func(atom kcheck.Atom, _ string) error {
+		if _, err := uuid.Parse(atom.Value); err != nil {
+			return fmt.Errorf("el campo %s debe ser un identificador uuid", atom.Name)
+		}
+		return nil
+	})
 }
 func main() {
 	c := make(chan os.Signal, 1)
@@ -38,6 +48,11 @@ func main() {
 	e := echo.New()
 	e.HideBanner = true
 	e.Use(database.GormMiddleware)
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins:  []string{"*"},
+		AllowHeaders:  []string{"*"},
+		ExposeHeaders: []string{"*"},
+	}))
 	handlers.StartRoutes(e)
 	go func() {
 		for sig := range c {
