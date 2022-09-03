@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -48,12 +49,18 @@ func main() {
 	log.Println("DATABASE OK!")
 	e := echo.New()
 	e.HideBanner = true
-	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			time.Sleep(2 * time.Second)
-			return next(c)
+	delay := envs.FindEnv("DELAY_RESPONSE", "0")
+	if delay != "0" {
+		value, err := strconv.Atoi(delay)
+		if err == nil {
+			e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+				return func(c echo.Context) error {
+					time.Sleep(time.Duration(value) * time.Second)
+					return next(c)
+				}
+			})
 		}
-	})
+	}
 	e.Use(database.GormMiddleware)
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins:  []string{"*"},
