@@ -31,7 +31,7 @@ type CollectionService interface {
 
 	Create(ctx context.Context, c *models.Collection) error
 	Update(ctx context.Context, c *models.Collection, username string) error
-	SaveTemplate(ctx context.Context, collectionid string, stt *models.TemlateDetails, img io.Reader) error
+	SaveTemplate(ctx context.Context, collectionid string, stt *models.TemlateDetails, img io.Reader) (templateUuid string, err error)
 }
 
 type collection struct {
@@ -123,26 +123,27 @@ func (s *collection) Update(ctx context.Context, c *models.Collection, username 
 	return s.repository.UpdateCollection(database.Conn(ctx), c, username)
 }
 
-func (s *collection) SaveTemplate(ctx context.Context, id string, stt *models.TemlateDetails, img io.Reader) error {
+func (s *collection) SaveTemplate(ctx context.Context, id string, stt *models.TemlateDetails, img io.Reader) (string, error) {
 	if id == "" {
-		return errores.NewBadRequestf(nil, "collection id no encontrado")
+		return "", errores.NewBadRequestf(nil, "collection id no encontrado")
 	}
 	if stt.ItemWidth == 0 {
-		return errores.NewBadRequestf(nil, "item_width no puede ser 0")
+		return "", errores.NewBadRequestf(nil, "item_width no puede ser 0")
 	}
 	if stt.QqSize == 0 {
-		return errores.NewBadRequestf(nil, "qr_size no puede ser 0")
+		return "", errores.NewBadRequestf(nil, "qr_size no puede ser 0")
 	}
 	username := security.UserName(ctx)
 	jd, err := json.Marshal(stt)
 	if err != nil {
-		return errores.NewInternalf(nil, "no se pudo procesar las configuraciones")
+		return "", errores.NewInternalf(nil, "no se pudo procesar las configuraciones")
 	}
-	return database.Transaction(ctx, func(tx *gorm.DB) error {
-		if err := s.repository.SaveTemplateDetails(tx, id, username, string(jd)); err != nil {
+	tmpluuid := uuid.NewString()
+	return tmpluuid, database.Transaction(ctx, func(tx *gorm.DB) error {
+		if err := s.repository.SaveTemplateDetails(tx, id, username, tmpluuid, string(jd)); err != nil {
 			return err
 		}
-		if err := s.xdir.Save(fmt.Sprintf("%s/%s.jpg", username, id), img); err != nil {
+		if err := s.xdir.Save(fmt.Sprintf("%s/%s.jpg", username, tmpluuid), img); err != nil {
 			return errores.NewInternalf(err, errores.ErrRecord)
 		}
 		return nil

@@ -13,6 +13,7 @@ import (
 	"goqrs/xstorage"
 	"log"
 
+	"github.com/google/uuid"
 	"github.com/ksaucedo002/answer/errores"
 	"gorm.io/gorm"
 )
@@ -21,7 +22,7 @@ var ErrProcess = errors.New("no se pudo actualizar el estado del proceso")
 
 type DocumentService interface {
 	FindDetailsAndCodes(ctx context.Context, id string) (tdetails *models.TemlateDetails, tickets []models.Ticket, err error)
-	GenerateDocument(ctx context.Context, id string, dt *models.TemlateDetails, codes []string) error
+	GenerateDocument(ctx context.Context, id string) (docuuid string, err error)
 }
 type docuement struct {
 	ticketRepo     repositories.TicketRepository
@@ -76,31 +77,63 @@ func (s *docuement) FindDetailsAndCodes(ctx context.Context, id string) (*models
 	}
 	return &tdetails, tickets, nil
 }
-func (s *docuement) GenerateDocument(ctx context.Context, id string, dt *models.TemlateDetails, codes []string) error {
+func (s *docuement) GenerateDocument(ctx context.Context, collectionID string) (string, error) {
 	username := security.UserName(ctx)
-	if err := s.collectionRepo.StartDocumentProcess(database.Conn(ctx), id, username); err != nil {
-		log.Println(err)
-		return ErrProcess
+	collection, err := s.collectionRepo.FindByID(database.Conn(ctx), username, collectionID)
+	if err != nil {
+		return "", err
 	}
-	if err := s.generateDocument(ctx, id, dt, codes); err != nil {
-		if err := s.collectionRepo.EndDocumentProcess(database.Conn(ctx), id, username, err.Error()); err != nil {
+	if collection.DocumentProcess == "processing" {
+		return "", errores.NewBadRequestf(nil, "el documento está siendo procesado")
+	}
+	if collection.TemplateUuid == "" {
+		return "", errores.NewBadRequestf(nil, "no se encontro el template")
+	}
+	if collection.DocumentUuid != "" {
+		go func() {
+			s.documentStorer.Delete(s.pathDoc(ctx, collection.DocumentUuid)) // si existe, removemos anterior pdf
+		}()
+	}
+	details, tickets, err := s.FindDetailsAndCodes(ctx, collectionID)
+	if err != nil {
+		return "", err
+	}
+	codes := make([]string, len(tickets))
+	for i, t := range tickets {
+		codes[i] = t.ID
+	}
+	if len(codes) == 0 {
+		return "", errores.NewBadRequestf(nil, "no se encontraron los codigos")
+	}
+	if err := s.collectionRepo.StartDocumentProcess(database.Conn(ctx), collectionID, username); err != nil {
+		log.Println(err)
+		return "", ErrProcess
+	}
+	docuuid, err := s.generateDocumentAndSave(ctx, collection.TemplateUuid, details, codes)
+	if err != nil {
+		if err := s.collectionRepo.EndDocumentProcessWithError(database.Conn(ctx), collectionID, username, err.Error()); err != nil {
 			log.Println(err)
-			return ErrProcess
+			return "", ErrProcess
 		}
-		return err
+		return "", err
 	}
-	if err := s.collectionRepo.EndDocumentProcess(database.Conn(ctx), id, username, ""); err != nil {
+	if err := s.collectionRepo.EndDocumentProcessSucess(database.Conn(ctx), collectionID, username, docuuid); err != nil {
 		log.Println(err)
-		return ErrProcess
+		return "", ErrProcess
 	}
-	return nil
+	return docuuid, nil
 }
-func (s *docuement) generateDocument(ctx context.Context, id string, dt *models.TemlateDetails, codes []string) error {
-	username := security.UserName(ctx)
-	template, err := s.templateStorer.Find(fmt.Sprintf("%s/%s.jpg", username, id))
+func (s *docuement) generateDocumentAndSave(
+	ctx context.Context,
+	tmpluuid string,
+	dt *models.TemlateDetails,
+	codes []string,
+) (docuuid string, err error) {
+	docuuid = uuid.NewString()
+	template, err := s.templateStorer.Find(s.pathTemplate(ctx, tmpluuid))
 	if err != err {
 		log.Println("service.generateDocument:", err)
-		return errors.New("no se pudo encontrar la imagen template")
+		return "", errors.New("no se pudo encontrar la imagen template")
 	}
 	doc, err := pdfqr.CreateDocument(template, codes, pdfqr.DocumentConfigs{
 		ItemWith: dt.ItemWidth,
@@ -109,10 +142,19 @@ func (s *docuement) generateDocument(ctx context.Context, id string, dt *models.
 		QrYPos:   dt.QqYPos,
 	})
 	if err != nil {
-		return err
+		return docuuid, err
 	}
-	if err := s.documentStorer.Save(fmt.Sprintf("%s/%s.pdf", username, id), doc); err != nil {
-		return err
+	if err := s.documentStorer.Save(s.pathDoc(ctx, docuuid), doc); err != nil {
+		return docuuid, err
 	}
-	return nil
+	return docuuid, nil
+}
+func (s *docuement) pathTemplate(ctx context.Context, uuid string) string {
+	username := security.UserName(ctx)
+	return fmt.Sprintf("%s/%s.jpg", username, uuid)
+}
+
+func (s *docuement) pathDoc(ctx context.Context, uuid string) string {
+	username := security.UserName(ctx)
+	return fmt.Sprintf("%s/%s.pdf", username, uuid)
 }

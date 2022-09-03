@@ -47,10 +47,11 @@ func HandleUploadTempleate(s services.CollectionService) echo.HandlerFunc {
 			)
 		}
 		defer f.Close()
-		if err := s.SaveTemplate(c.Request().Context(), collectionid, &stts, f); err != nil {
+		templateuuid, err := s.SaveTemplate(c.Request().Context(), collectionid, &stts, f)
+		if err != nil {
 			return answer.ErrorResponse(c, err)
 		}
-		return nil
+		return answer.OK(c, echo.Map{"template_uuid": templateuuid})
 	}
 }
 func ImageTemplate(s xstorage.StorageService) echo.HandlerFunc {

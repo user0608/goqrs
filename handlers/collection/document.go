@@ -85,14 +85,6 @@ func createDocument(f io.ReadSeeker, codes []string, s models.TemlateDetails) (i
 func HandleProcessDocument(publicher events.EventPublicher, service services.DocumentService) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		id := c.Param("collection_id")
-		details, tickets, err := service.FindDetailsAndCodes(c.Request().Context(), id)
-		if err != nil {
-			return answer.ErrorResponse(c, err)
-		}
-		codes := make([]string, len(tickets))
-		for i, t := range tickets {
-			codes[i] = t.ID
-		}
 		username := security.UserName(c.Request().Context())
 		claims, _ := security.JwtClaims(c.Request().Context())
 		go func() {
@@ -102,7 +94,8 @@ func HandleProcessDocument(publicher events.EventPublicher, service services.Doc
 			})
 			ctx := security.Context(context.Background(), claims)
 			ctx = database.Context(ctx)
-			if err := service.GenerateDocument(ctx, id, details, codes); err != nil {
+			docuuid, err := service.GenerateDocument(ctx, id)
+			if err != nil {
 				publicher.Publish(username, events.EventData{
 					EventName: events.DOCUMENT_PROCESSED,
 					Data:      map[string]string{"collection_id": id, "error": err.Error()},
@@ -110,7 +103,7 @@ func HandleProcessDocument(publicher events.EventPublicher, service services.Doc
 			}
 			publicher.Publish(username, events.EventData{
 				EventName: events.DOCUMENT_PROCESSED,
-				Data:      map[string]string{"collection_id": id, "error": ""},
+				Data:      map[string]string{"collection_id": id, "doc_uuid": docuuid, "error": ""},
 			})
 		}()
 		return answer.Message(c, answer.SUCCESS_OPERATION)
@@ -120,7 +113,7 @@ func HandleProcessDocument(publicher events.EventPublicher, service services.Doc
 func DownloadDocumentPDF(s xstorage.StorageService) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		username := security.UserName(c.Request().Context())
-		id := c.Param("collection_id")
+		id := c.Param("document_uuid")
 		document, err := s.Find(fmt.Sprintf("%s/%s.pdf", username, id))
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
@@ -131,6 +124,11 @@ func DownloadDocumentPDF(s xstorage.StorageService) echo.HandlerFunc {
 			}
 			return answer.ErrorResponse(c, err)
 		}
-		return c.Stream(http.StatusOK, "application/pdf", document)
+		doc, err := io.ReadAll(document)
+		if err != nil {
+			return answer.ErrorResponse(c, err)
+		}
+		c.Response().Writer.Header().Set("Content-Length", fmt.Sprint(len(doc)))
+		return c.Blob(http.StatusOK, "application/pdf", doc)
 	}
 }

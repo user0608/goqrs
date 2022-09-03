@@ -15,7 +15,8 @@ type CollectionRepository interface {
 	DeleteCollection(tx *gorm.DB, username, id string) error
 
 	StartDocumentProcess(tx *gorm.DB, id, username string) error
-	EndDocumentProcess(tx *gorm.DB, id, username, messageerror string) error
+	EndDocumentProcessWithError(tx *gorm.DB, id, username, messageerror string) error
+	EndDocumentProcessSucess(tx *gorm.DB, id, username, docuuid string) error
 
 	UpdateCollection(tx *gorm.DB, c *models.Collection, username string) error
 
@@ -24,7 +25,7 @@ type CollectionRepository interface {
 	RemoveTag(tx *gorm.DB, tagID string) error
 
 	InsertTickets(tx *gorm.DB, tikets []models.Ticket) error
-	SaveTemplateDetails(tx *gorm.DB, collectionID, username string, jsond string) error
+	SaveTemplateDetails(tx *gorm.DB, collectionID, username, tmpluuid, jsond string) error
 }
 
 type collection struct {
@@ -103,15 +104,25 @@ func (r *collection) StartDocumentProcess(tx *gorm.DB, id, username string) erro
 	}
 	return nil
 }
-func (r *collection) EndDocumentProcess(tx *gorm.DB, id, username, messageerror string) error {
+func (r *collection) EndDocumentProcessWithError(tx *gorm.DB, id, username, messageerror string) error {
 	db := tx.Select("document_process", "process_result").Where("id = ? and account_username = ?", id, username)
-	status := "processed"
-	if messageerror != "" {
-		status = "error"
-	}
 	rs := db.Updates(&models.Collection{
-		DocumentProcess: status,
+		DocumentProcess: "error",
 		ProcessResult:   messageerror,
+	})
+	if rs.Error != nil {
+		return errores.NewInternalDBf(rs.Error)
+	}
+	if rs.RowsAffected == 0 {
+		return errores.NewInternalf(nil, errores.ErrRecordNotFaund)
+	}
+	return nil
+}
+func (r *collection) EndDocumentProcessSucess(tx *gorm.DB, id, username, docuuid string) error {
+	db := tx.Select("document_process", "document_uuid").Where("id = ? and account_username = ?", id, username)
+	rs := db.Updates(&models.Collection{
+		DocumentProcess: "processed",
+		DocumentUuid:    docuuid,
 	})
 	if rs.Error != nil {
 		return errores.NewInternalDBf(rs.Error)
@@ -171,8 +182,12 @@ func (r *collection) RemoveTag(tx *gorm.DB, tagID string) error {
 	}
 	return nil
 }
-func (r *collection) SaveTemplateDetails(tx *gorm.DB, id, username string, jsond string) error {
-	rs := tx.Model(models.Collection{}).Where("id = ? and account_username = ?", id, username).Update("template_details", jsond)
+func (r *collection) SaveTemplateDetails(tx *gorm.DB, id, username, tmpluuid, jsond string) error {
+	rs := tx.Select("template_uuid", "template_details").
+		Where("id = ? and account_username = ?", id, username).Updates(&models.Collection{
+		TemplateUuid:    tmpluuid,
+		TemplateDetails: jsond,
+	})
 	if rs.Error != nil {
 		return errores.NewInternalDBf(rs.Error)
 	}

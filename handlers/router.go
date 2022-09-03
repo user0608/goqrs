@@ -5,6 +5,7 @@ import (
 	"goqrs/handlers/collection"
 	"goqrs/handlers/events"
 	"goqrs/handlers/login"
+	"goqrs/handlers/tickets"
 	"goqrs/repositories"
 	"goqrs/security"
 	"goqrs/services"
@@ -25,6 +26,16 @@ func StartRoutes(e *echo.Echo) {
 	e.GET("/events", events.Handler, security.JWTMiddleware)
 	e.GET("/events/test", sendEventTest(events.NewEventPublicher()), security.JWTMiddleware)
 	collectionRoutes(e.Group("/collection", security.JWTMiddleware))
+	ticketRoutes(e.Group("/ticket", security.JWTMiddleware))
+}
+func ticketRoutes(g *echo.Group) {
+	service := services.NewTicketService(
+		repositories.NewCollectionRepository(),
+		repositories.NewTicketRepository(),
+	)
+	g.PUT("/invalid/:ticket_uuid", tickets.HandleInvalidTicket(service))
+	g.PUT("/claim/:ticket_uuid", tickets.HandleClaimTicket(service))
+	g.GET("/complete/:ticket_uuid", tickets.HandleCunsultTickt(service))
 }
 func collectionRoutes(g *echo.Group) {
 	baseDir := envs.FindEnv("GOQRS_TEMPLATE_BASE_DIR", "templates")
@@ -57,9 +68,9 @@ func collectionRoutes(g *echo.Group) {
 
 	g.POST("/document/test", collection.HandlerPruebaDocument())
 	g.GET("/document/generate/:collection_id", collection.HandleProcessDocument(publicher, docService))
-	g.GET("/document/:collection_id", collection.DownloadDocumentPDF(xdocStore))
+	g.GET("/document/:document_uuid", collection.DownloadDocumentPDF(xdocStore))
 	g.POST("/template/:collection_id", collection.HandleUploadTempleate(service))
-	g.GET("/template/:collection_id", collection.ImageTemplate(xtemplateStore))
+	g.GET("/template/:template_uuid", collection.ImageTemplate(xtemplateStore))
 	g.PUT("", collection.HandelUpdate(service))
 	g.POST("", collection.HandelCreate(service))
 }

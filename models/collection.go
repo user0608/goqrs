@@ -20,13 +20,14 @@ type Collection struct {
 	NotBefore       *time.Time     `json:"not_before"`
 	CreatedAt       time.Time      `json:"created_at"`
 	NumTickets      int            `json:"num_tickets"`
-	ImageTemplate   string         `json:"tamplate"`
+	TemplateUuid    string         `json:"template_uuid"`
 	TemplateDetails string         `json:"template_details"`
+	DocumentUuid    string         `json:"documento_uuid"`
 	DocumentProcess string         `json:"document_process"`
 	ProcessResult   string         `json:"process_result"`
-	Tags            []Tag          `json:"tags"`
 	AccountUsername string         `json:"-"`
 	DeletedAt       gorm.DeletedAt `json:"-"`
+	Tags            []Tag          `json:"tags"`
 }
 
 type TemlateDetails struct {
