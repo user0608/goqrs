@@ -34,6 +34,7 @@ require (
 	github.com/phpdave11/gofpdi v1.0.11 // indirect
 	github.com/pkg/errors v0.8.1 // indirect
 	github.com/sirupsen/logrus v1.8.1 // indirect
+	github.com/user0608/ifdevmode v0.0.3 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.1 // indirect
 	golang.org/x/crypto v0.0.0-20220213190939-1e6e3497d506 // indirect

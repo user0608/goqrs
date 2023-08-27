@@ -2,8 +2,8 @@ package database
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"reflect"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm/logger"
@@ -14,17 +14,15 @@ import (
 
 	"goqrs/envs"
 
-	"github.com/ksaucedo002/answer/errores"
-	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 )
 
 type key int
 
 var (
-	dbKey key
-	conn  *gorm.DB
-	once  sync.Once
+	context_connextion_key key
+	connection             *gorm.DB
+	once                   sync.Once
 )
 
 func logMode() logger.LogLevel {
@@ -50,7 +48,7 @@ func PrepareConnection() (err error) {
 		const layer = "host=%s user=%s password=%s dbname=%s port=%s sslmode=disable"
 		dsn := fmt.Sprintf(layer, host, user, password, dbname, port)
 
-		conn, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
+		connection, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
 			SkipDefaultTransaction: true,
 			Logger:                 logger.Default.LogMode(logMode()),
 			NamingStrategy: schema.NamingStrategy{
@@ -61,45 +59,24 @@ func PrepareConnection() (err error) {
 	return err
 }
 
-func GormMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		ctx := WithConnection(c.Request().Context())
-		c.SetRequest(c.Request().WithContext(ctx))
-		return next(c)
-	}
-}
-func Context(ctx context.Context) context.Context {
-	return context.WithValue(ctx, dbKey, conn)
-}
-func WithConnection(ctx context.Context) context.Context {
-	return context.WithValue(ctx, dbKey, conn.WithContext(ctx))
-}
 func Conn(ctx context.Context) *gorm.DB {
-	value := ctx.Value(dbKey)
+	value := ctx.Value(context_connextion_key)
 	if value == nil {
-		panic("connection value not found with dbKey")
+		return connection.WithContext(ctx)
 	}
 	connection, ok := value.(*gorm.DB)
 	if !ok {
-		panic("connection invalid type")
+		log.Println("WARN:", "connection invalid type:", reflect.TypeOf(value))
+		return connection.WithContext(ctx)
 	}
 	return connection
 }
-func Transaction(ctx context.Context, f func(tx *gorm.DB) error) (err error) {
-	tx := Conn(ctx).Begin()
-	defer func() {
-		if r := recover(); r != nil {
-			if err := tx.Rollback(); err != nil {
-				log.Println("rollback error")
-			}
-			err = errors.New(fmt.Sprint(r))
-		}
-	}()
-	if err := f(tx); err != nil {
-		return err
+
+func WithTx(ctx context.Context, fc func(ctx context.Context) error) error {
+	if ctx.Value(context_connextion_key) != nil {
+		return fc(ctx) // returns the current connection
 	}
-	if err := tx.Commit().Error; err != nil {
-		return errores.NewInternalDBf(err)
-	}
-	return nil
+	return Conn(ctx).Transaction(func(tx *gorm.DB) error {
+		return fc(context.WithValue(ctx, context_connextion_key, tx))
+	})
 }

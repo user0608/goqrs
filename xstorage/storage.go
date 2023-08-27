@@ -22,7 +22,7 @@ type template struct {
 
 func NewTemplateStorage(basePath string) (StorageService, error) {
 	basePath = path.Clean(basePath)
-	if err := os.MkdirAll(basePath, 0644); err != nil {
+	if err := os.MkdirAll(basePath, os.ModeDir|0760); err != nil {
 		return nil, err
 	}
 	t := &template{basePath: basePath}
@@ -40,15 +40,15 @@ func (s *template) Find(location string) (io.ReadSeeker, error) {
 	return bytes.NewReader(contentfile), nil
 }
 func (s *template) Save(location string, r io.Reader) error {
-	file, err := os.OpenFile(s.path(location), os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(s.path(location), os.O_CREATE|os.O_WRONLY, 0760)
 	if err != nil {
 		var patherr *fs.PathError
 		if errors.As(err, &patherr) {
 			fmt.Println("OK")
-			if err := os.MkdirAll(s.path(path.Dir(location)), 0644); err != nil {
+			if err := os.MkdirAll(s.path(path.Dir(location)), os.ModeDir|0760); err != nil {
 				return err
 			}
-			file, err = os.OpenFile(s.path(location), os.O_CREATE|os.O_WRONLY, 0644)
+			file, err = os.OpenFile(s.path(location), os.O_CREATE|os.O_WRONLY, 0760)
 			if err != nil {
 				return err
 			}

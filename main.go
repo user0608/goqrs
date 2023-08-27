@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"goqrs/database"
 	"goqrs/envs"
-	"goqrs/handlers"
+	"goqrs/internal"
+
+	"goqrs/migrate"
 	"goqrs/security"
 	"log"
 	"os"
@@ -18,6 +21,7 @@ import (
 	"github.com/ksaucedo002/kcheck"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/user0608/ifdevmode"
 )
 
 func init() {
@@ -39,35 +43,41 @@ func main() {
 
 	if err := security.LoadRSAKeys(); err != nil {
 		log.Println("Err RSA Kes:", err)
-		os.Exit(0)
+		os.Exit(1)
 	}
 	log.Println("RSA KEYS OK!")
 	if err := database.PrepareConnection(); err != nil {
 		log.Println("Err database:", err)
-		os.Exit(0)
+		os.Exit(1)
+	}
+
+	if err := migrate.RunSimpleMigration(database.Conn(context.Background())); err != nil {
+		log.Println("Err database migrations:", err)
+		os.Exit(1)
 	}
 	log.Println("DATABASE OK!")
 	e := echo.New()
 	e.HideBanner = true
-	delay := envs.FindEnv("DELAY_RESPONSE", "0")
-	if delay != "0" {
-		value, err := strconv.Atoi(delay)
-		if err == nil {
-			e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-				return func(c echo.Context) error {
-					time.Sleep(time.Duration(value) * time.Second)
-					return next(c)
-				}
-			})
+	if ifdevmode.Yes() {
+		delay := envs.FindEnv("DELAY_RESPONSE", "0")
+		if delay != "0" {
+			value, err := strconv.Atoi(delay)
+			if err == nil {
+				e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+					return func(c echo.Context) error {
+						time.Sleep(time.Duration(value) * time.Second)
+						return next(c)
+					}
+				})
+			}
 		}
 	}
-	e.Use(database.GormMiddleware)
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins:  []string{"*"},
 		AllowHeaders:  []string{"*"},
 		ExposeHeaders: []string{"*"},
 	}))
-	handlers.StartRoutes(e)
+	internal.StartRoutes(e)
 	go func() {
 		for sig := range c {
 			if err := e.Close(); err != nil {

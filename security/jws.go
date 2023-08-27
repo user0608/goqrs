@@ -1,10 +1,16 @@
 package security
 
 import (
+	"crypto/rand"
 	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
+	"fmt"
 	"goqrs/envs"
+	"io/fs"
 	"os"
+	"path"
 	"sync"
 	"time"
 
@@ -18,7 +24,7 @@ var (
 	publicKey  *rsa.PublicKey
 )
 var (
-	jwtTokenLife time.Duration = 730 * time.Hour
+	jwtTokenLife time.Duration = 24 * time.Hour
 )
 
 func LoadRSAKeys() (err error) {
@@ -28,6 +34,13 @@ func LoadRSAKeys() (err error) {
 	}
 	keyPath := envs.FindEnv("GOQRS_RSA_PRIVATE", "certificates/id_rsa")
 	pubPath := envs.FindEnv("GOQRS_RSA_PUBLIC", "certificates/id_rsa.pub")
+	if keyPath == "" || pubPath == "" {
+		keyPath = "jwt/rsa"
+		pubPath = "jwt/rsa.pub"
+	}
+	if err := genRSAKeysIfNotExists(keyPath, pubPath); err != nil {
+		return err
+	}
 	once.Do(func() {
 		var private []byte
 		var public []byte
@@ -49,6 +62,63 @@ func LoadRSAKeys() (err error) {
 		}
 	})
 	return err
+}
+func genRSAKeysIfNotExists(privateKeyPath, pubKeyPath string) error {
+	os.MkdirAll(path.Dir(privateKeyPath), fs.ModeDir|0755)
+	os.MkdirAll(path.Dir(pubKeyPath), fs.ModeDir|0755)
+	_, keyerr := os.Stat(privateKeyPath)
+	_, puberr := os.Stat(pubKeyPath)
+	if keyerr != nil || puberr != nil {
+		if errors.Is(keyerr, os.ErrNotExist) || errors.Is(puberr, os.ErrNotExist) {
+			os.Remove(privateKeyPath)
+			os.Remove(pubKeyPath)
+		} else {
+			return fmt.Errorf("error: %v %v", keyerr, puberr)
+		}
+	}
+	if keyerr == nil && puberr == nil {
+		return nil
+	}
+
+	privateKeyFile, err := os.Create(privateKeyPath)
+	if err != nil {
+		return err
+	}
+	defer privateKeyFile.Close()
+
+	publicKeyFile, err := os.Create(pubKeyPath)
+	if err != nil {
+		return err
+	}
+	defer publicKeyFile.Close()
+
+	key, err := rsa.GenerateKey(rand.Reader, 1024)
+	if err != nil {
+		return err
+	}
+	if err := key.Validate(); err != nil {
+		return fmt.Errorf("invalid: %w", err)
+	}
+	privateKeyPEM := &pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
+	}
+	if err := pem.Encode(privateKeyFile, privateKeyPEM); err != nil {
+		return fmt.Errorf("key-encode %w", err)
+	}
+	pub, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	if err != nil {
+		return fmt.Errorf("pkix %w", err)
+	}
+	publicKeyPEN := &pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: pub,
+	}
+	//ParsePKIXPublicKey
+	if err := pem.Encode(publicKeyFile, publicKeyPEN); err != nil {
+		return fmt.Errorf("pub-encode %w", err)
+	}
+	return nil
 }
 
 type JWTValues struct {
