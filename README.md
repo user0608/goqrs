@@ -3,6 +3,7 @@
 Es un proyecto desarrollado para generar documentos PDF A4 con tarjetas a las cuales se les agrega un identificar QR único permitiendo utilizar estas tarjetas como vales de consumo, entradas a eventos, identificadores, etc..
 
 Características:
+
     - Como principal característica esta la posibilidad de subir la plantilla de la tarjeta como imagen PNG, definir el ancho que esta tendría sobre el documento A4, definir la ubicación y dimenciones que tendría el código QR, y el numero de targetas que vamos a generar.
 
     - Permite crear colecciones, la cual representa un grupo de tarjetas, las cuales pueden pertenecer a un evento o campaña.
@@ -27,3 +28,20 @@ Estas tarjetas son lectura das por un aplicativo móvil en donde puede ser valid
 ![Image Colleciones](./imgs/qr-scaner.jpg)
 
 ![Image Colleciones](./imgs/valido.jpg)
+
+
+
+
+* WEB: https://github.com/user0608/qrsystem-web
+* APP: https://github.com/user0608/qr_tickets
+
+Instrucciones:
+```bash
+    git glone https://github.com/user0608/goqrs
+    cd goqrs
+    docker compose up -d    
+```
+http://localhost:8071/
+
+user: admin   
+password: admin

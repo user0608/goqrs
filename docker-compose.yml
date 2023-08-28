@@ -1,0 +1,53 @@
+version: "3"
+services:
+  qrdb:
+    image: postgres:15
+    hostname: qrdb
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=kevin
+      - POSTGRES_PASSWORD=maira002
+      - POSTGRES_DB=goqrs
+    volumes:
+      - ./compose/postgresql:/var/lib/postgresql/data
+  qrapi:
+    image: ksaucedo/goqrs:v1.0.0
+    hostname: qrapi
+    restart: unless-stopped
+    ports:
+      - 8080:80
+    environment:
+      - GOQRS_ADDRESS=:80
+        # base user
+      - ROOT_USER=admin
+        # password hash on base64 ; default admin
+        # https://bcrypt-generator.com/
+        # https://www.base64encode.org/
+      - ROOT_USER_PASSWORD=JDJhJDEyJDIuaHh6ZXdlTzJ3Tk10QzlxNGFTTC5CTEl1Z0dTVEZXYi5YcjNlYUxadWh2NXBzL2RWaVYu
+      - GOQRS_DB_HOST=qrdb
+      - GOQRS_DB_USER=kevin
+      - GOQRS_DB_PASSWORD=maira002
+      - GOQRS_DB_NAME=goqrs
+      - GOQRS_DB_PORT=5432
+      - GOQRS_RSA_PRIVATE=certificates/id_rsa
+      - GOQRS_RSA_PUBLIC=certificates/id_rsa.pub
+        # info,silent,warn,error
+      - GOQRS_DB_LOGS=info
+        # Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
+      - TOKEN_LIFE=730h
+      - GOQRS_TEMPLATE_BASE_DIR=files/templates/
+      - GOQRS_DOCUMENTS_BASE_DIR=files/documents/
+    volumes:
+      - ./compose/files:/app/files
+    depends_on:
+      - qrdb
+  qrweb:
+    image: ksaucedo/qrsystem:v1.0.0
+    hostname: qrweb
+    restart: unless-stopped
+    ports:
+      - 8071:80
+    environment:
+      - API_URL=http://localhost:8080
+    depends_on:
+      - qrapi

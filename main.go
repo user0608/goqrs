@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"goqrs/database"
 	"goqrs/envs"
@@ -26,7 +27,7 @@ import (
 
 func init() {
 	err := godotenv.Load()
-	if err != nil {
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		log.Println("Eror loading .env file:", err)
 		os.Exit(0)
 	}
